@@ -4,6 +4,10 @@ Project repository: [Numericss/Hinge](https://github.com/Numericss/Hinge).
 
 A native macOS desktop-effects app that responds to a compatible MacBook lid sensor. Working product name; version 3.0.0 is a development preview, not yet a customer release.
 
+![Hinge demonstrating Duo, Roll, Shutter, Flex, and Iris](docs/media/hinge-effects.gif)
+
+*Five effects rendered by Hinge 3.0 using generated preview artwork. This demonstrates the renderer, not a recording of physical lid movement or desktop capture.*
+
 ## Version 3.0
 
 - Five inherited Swift + Metal effects: Duo, Roll, Shutter, Flex, and Iris.
