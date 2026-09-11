@@ -266,7 +266,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
         let title: [NSAttributedString.Key:Any] = [.font:NSFont.systemFont(ofSize:116,weight:.light), .foregroundColor:NSColor.white.withAlphaComponent(0.9)]
         let caption: [NSAttributedString.Key:Any] = [.font:NSFont.systemFont(ofSize:23,weight:.medium), .foregroundColor:NSColor.white.withAlphaComponent(0.8)]
-        let previewTitle = "Mac Duo" as NSString
+        let previewTitle = "Hinge" as NSString
         let titleWidth = previewTitle.size(withAttributes:title).width
         previewTitle.draw(at:CGPoint(x:(1440-titleWidth)/2,y:530),withAttributes:title)
         ("A little motion. A different feeling." as NSString).draw(at:CGPoint(x:533,y:493),withAttributes:caption)

@@ -1,9 +1,9 @@
 // swift-tools-version: 6.0
 import PackageDescription
-let package = Package(name: "MacDuo", platforms: [.macOS(.v14)], products: [
-    .executable(name: "MacDuo", targets: ["MacDuo"])
+let package = Package(name: "Hinge", platforms: [.macOS(.v14)], products: [
+    .executable(name: "Hinge", targets: ["Hinge"])
 ], targets: [
     .target(name: "FoldCore"),
-    .executableTarget(name: "MacDuo", dependencies: ["FoldCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    .executableTarget(name: "Hinge", dependencies: ["FoldCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
     .testTarget(name: "FoldCoreTests", dependencies: ["FoldCore"])
 ])

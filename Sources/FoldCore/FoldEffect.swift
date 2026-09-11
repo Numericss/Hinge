@@ -3,7 +3,7 @@ import Foundation
 /// The catalog of lid effects. `rawValue` is the stable persisted identifier and
 /// `shaderIndex` is the explicit numeric contract with the Metal fragment shader.
 /// Neither may be renumbered: saved selections and the shader switch depend on both.
-public enum FoldEffect: String, CaseIterable, Sendable, Identifiable {
+public enum FoldEffect: String, CaseIterable, Codable, Sendable, Identifiable {
     case duo, roll, shutter, flex, iris
 
     public static let fallback = FoldEffect.duo

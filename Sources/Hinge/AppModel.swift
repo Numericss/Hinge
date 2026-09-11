@@ -36,7 +36,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     @Published var lidAngle: Double?
     @Published var enabled = false
     @Published var checkingPermission = false
-    @Published var status = "Preview is ready. Enable Mac Duo to use your desktop."
+    @Published var status = "Preview is ready. Enable Hinge to use your desktop."
     @Published var hasPermission = CGPreflightScreenCaptureAccess()
     @Published var followLid = UserDefaults.standard.object(forKey:"followLid") as? Bool ?? true {
         didSet { UserDefaults.standard.set(followLid,forKey:"followLid") }
@@ -99,7 +99,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     private var metalView: MTKView?
     private var timer: Timer?
     private var enableTask: Task<Void, Never>?
-    private let logger = Logger(subsystem:"local.lidflow.mac",category:"lifecycle")
+    private let logger = Logger(subsystem:"com.datalynlabs.hinge.mac",category:"lifecycle")
     private var hotKey: EventHotKeyRef?
     private var escapeKey: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
@@ -254,7 +254,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
                 let failure = error as NSError
                 if failure.domain == SCStreamErrorDomain && failure.code == SCStreamError.Code.userDeclined.rawValue {
                     self.hasPermission = false
-                    self.status = "Screen access was not accepted. Allow the Mac Duo copy in Applications, then quit and reopen it. If its permission was already on for an older build, remove that old entry and add the current app."
+                    self.status = "Screen access was not accepted. Allow the Hinge copy in Applications, then quit and reopen it. If its permission was already on for an older build, remove that old entry and add the current app."
                 } else {
                     self.status = "Could not enable screen capture: \(error.localizedDescription)"
                 }
@@ -278,6 +278,37 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
         enabled = false;demoStart = nil;demoRunning = false
         hideOverlay();capture.stop();status = message
+    }
+
+    @Published private(set) var personalPreset = UserDefaults.standard.data(forKey:"personalPreset")
+        .flatMap { try? JSONDecoder().decode(MotionPreset.self,from:$0) }?.validated
+
+    func applyPreset(_ preset: MotionPreset) {
+        let value = preset.validated
+        // Assign the effect last so its redraw observes the complete new configuration.
+        perspective = value.perspective; blur = value.softness; shadow = value.shadow
+        clearAngle = value.clearAngle; stillnessDelay = value.stillnessDelay
+        clearWhenStill = value.clearWhenStill; effect = value.effect
+        resetStillness(); wakePreview(); update()
+    }
+
+    func savePersonalPreset() {
+        let value = MotionPreset(effect:effect,perspective:perspective,softness:blur,shadow:shadow,
+                                 clearAngle:clearAngle,stillnessDelay:stillnessDelay,clearWhenStill:clearWhenStill)
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        UserDefaults.standard.set(data,forKey:"personalPreset")
+        personalPreset = value
+    }
+
+    var canCalibrate: Bool {
+        guard sensorAvailable, let angle = lidAngle, angle.isFinite else { return false }
+        return (60...140).contains(angle) && ProcessInfo.processInfo.systemUptime-sensorAt < 1
+    }
+
+    func calibrate() {
+        guard canCalibrate, let angle = lidAngle else { return }
+        clearAngle = angle.rounded()
+        resetStillness(); wakePreview(); update()
     }
 
     func playPreview() { previewStart = ProcessInfo.processInfo.systemUptime;previewPlaying = true }
@@ -386,7 +417,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
         guard let screen = builtInScreen(), let display = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
               CGDisplayIsInMirrorSet(display.uint32Value) == 0 else {
-            pause("Mac Duo needs an active, unmirrored built-in display.");return
+            pause("Hinge needs an active, unmirrored built-in display.");return
         }
         let target = liveProgress
         let shouldCapture = demoRunning || (!shouldClearForStillness && (lidAngle ?? 180) < clearAngle+14)

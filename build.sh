@@ -1,45 +1,51 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
-BUILD_DIR="${MACDUO_BUILD_DIR:-${LIDFLOW_BUILD_DIR:-.build}}"
+# SwiftUI macros and the test runtime require full Xcode, not standalone CLT.
+if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p)" == *CommandLineTools* ]]; then
+  for candidate in /Applications/Xcode.app/Contents/Developer /Applications/Xcode-beta.app/Contents/Developer; do
+    if [[ -d "$candidate" ]]; then export DEVELOPER_DIR="$candidate"; break; fi
+  done
+fi
+BUILD_DIR="${HINGE_BUILD_DIR:-.build}"
+IDENTITY="${HINGE_SIGNING_IDENTITY:--}"
 swift build -c release --scratch-path "$BUILD_DIR"
 BIN_DIR="$(swift build -c release --scratch-path "$BUILD_DIR" --show-bin-path)"
-SIGNING_IDENTITY="${MACDUO_SIGNING_IDENTITY:-${LIDFLOW_SIGNING_IDENTITY:-}}"
-if [[ -z "$SIGNING_IDENTITY" ]]; then
-  if [[ -f signing-identity.txt ]]; then
-    SIGNING_IDENTITY="$(cat signing-identity.txt)"
-  else
-    SIGNING_IDENTITY="-"
-  fi
-fi
-APP="$PWD/build/Mac Duo.app"
+swift scripts/make-icon.swift Resources
+iconutil -c icns Resources/Hinge.iconset -o Resources/Hinge.icns
+# Keep signed bundles outside synced Documents folders, whose file-provider
+# metadata can invalidate strict code-signature checks after a successful build.
+OUTPUT_DIR="${HINGE_OUTPUT_DIR:-$HOME/Library/Caches/Hinge/build}"
+mkdir -p "$OUTPUT_DIR"
+APP="$OUTPUT_DIR/Hinge.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/MacDuo" "$APP/Contents/MacOS/MacDuo"
-# Remove debug symbols containing local build paths before signing the app.
-xcrun strip -S "$APP/Contents/MacOS/MacDuo"
-cp Resources/MacDuoMark.png Resources/MacDuo.icns "$APP/Contents/Resources/"
+cp "$BIN_DIR/Hinge" "$APP/Contents/MacOS/Hinge"
+xcrun strip -S "$APP/Contents/MacOS/Hinge"
+cp Resources/HingeMark.png Resources/Hinge.icns LICENSE ATTRIBUTION.md "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>Mac Duo</string>
-<key>CFBundleDisplayName</key><string>Mac Duo</string>
-<key>CFBundleIdentifier</key><string>local.lidflow.mac</string>
-<key>CFBundleExecutable</key><string>MacDuo</string>
+<key>CFBundleName</key><string>Hinge</string>
+<key>CFBundleDisplayName</key><string>Hinge</string>
+<key>CFBundleIdentifier</key><string>com.datalynlabs.hinge.mac</string>
+<key>CFBundleExecutable</key><string>Hinge</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleIconFile</key><string>MacDuo</string>
-<key>CFBundleShortVersionString</key><string>0.1.6</string>
-<key>CFBundleVersion</key><string>7</string>
+<key>CFBundleIconFile</key><string>Hinge</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSScreenCaptureUsageDescription</key><string>Mac Duo displays a temporary, animated copy of your desktop as you move the lid. Frames stay in memory on this Mac.</string>
+<key>NSScreenCaptureUsageDescription</key><string>Hinge displays a temporary animated copy of your desktop as you move the lid. Frames stay in memory on this Mac.</string>
 </dict></plist>
 PLIST
-codesign --force --sign "$SIGNING_IDENTITY" --identifier local.lidflow.mac "$APP"
+xattr -cr "$APP"
+if [[ "$IDENTITY" == "-" ]]; then
+  codesign --force --sign - "$APP"
+else
+  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+fi
 codesign --verify --strict "$APP"
 plutil -lint "$APP/Contents/Info.plist"
 printf 'Built %s\n' "$APP"
-if [[ "$SIGNING_IDENTITY" == "-" ]]; then
-  printf 'Ad-hoc development build. Use a consistent Apple Development identity to preserve Screen Recording access across updates.\n'
-fi

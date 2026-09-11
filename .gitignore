@@ -9,3 +9,5 @@ signing-identity.txt
 .claude/
 *.xcuserstate
 xcuserdata/
+
+Resources/Hinge.iconset/

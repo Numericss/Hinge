@@ -36,9 +36,10 @@ struct MetalPreview: NSViewRepresentable {
 
 struct Controls: View {
     @ObservedObject var model: AppModel
+    @State private var showStudio = false
     @Environment(\.colorScheme) private var colorScheme
     private var accent: Color {
-        colorScheme == .dark ? Color(red:1.0,green:0.56,blue:0.18) : Color(red:0.76,green:0.30,blue:0.04)
+        colorScheme == .dark ? Color(red:0.40,green:0.86,blue:0.80) : Color(red:0.02,green:0.43,blue:0.40)
     }
     private var background: Color {
         colorScheme == .dark ? Color(red:0.075,green:0.085,blue:0.095) : Color(red:0.97,green:0.965,blue:0.95)
@@ -68,6 +69,7 @@ struct Controls: View {
         }
         .background(background)
         .tint(accent)
+        .sheet(isPresented:$showStudio) { StudioSettings(model:model) }
     }
 
     private var header: some View {
@@ -75,10 +77,12 @@ struct Controls: View {
             Image(nsImage:AppBrand.mark).resizable().scaledToFit().frame(width:40,height:40)
                 .accessibilityHidden(true)
             VStack(alignment:.leading,spacing:5) {
-                Text("Mac Duo").font(.system(size:27,weight:.semibold,design:.rounded))
-                Text("Let your desktop follow the fold.").font(.system(size:12)).foregroundStyle(.secondary)
+                Text("Hinge").font(.system(size:27,weight:.semibold,design:.rounded))
+                Text("A little motion. A more personal Mac.").font(.system(size:12)).foregroundStyle(.secondary)
             }
             Spacer()
+            Button { showStudio = true } label: { Label("Motion studio",systemImage:"slider.horizontal.3") }
+                .controlSize(.large)
             HStack(spacing:6) {
                 Circle().fill(model.sensorAvailable ? accent : .orange).frame(width:6,height:6)
                 Text(model.lidAngle.map { String(format:"Lid %.0f°",$0) } ?? "Looking for sensor")
@@ -159,7 +163,7 @@ struct Controls: View {
         VStack(alignment:.leading,spacing:8) {
             Divider()
             HStack(spacing:8) {
-                Button(model.checkingPermission ? "Checking…" : (model.enabled ? "Pause Mac Duo" : "Enable Mac Duo")) {
+                Button(model.checkingPermission ? "Checking…" : (model.enabled ? "Pause Hinge" : "Enable Hinge")) {
                     if model.enabled { model.pause() } else { model.enable() }
                 }.disabled(model.checkingPermission).buttonStyle(.borderedProminent).tint(accent)
                 Button(model.demoRunning ? "Testing…" : "Test desktop · 8 sec") { model.testDesktop() }

@@ -1,54 +1,45 @@
-<img src="docs/assets/mark.png" alt="Mac Duo logo" width="96" align="right">
+# Hinge
 
-# Mac Duo
+A native macOS desktop-effects app that responds to a compatible MacBook lid sensor. Working product name; version 0.1.0 is a development preview, not yet a customer release.
 
-**Make your desktop feel physical.** Five effects that follow the movement of your MacBook lid.
+## Our version
 
-[![Release](https://img.shields.io/github/v/release/DhananjayBhosale/MacDuo?color=c65a16&label=download)](https://github.com/DhananjayBhosale/MacDuo/releases/latest)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-333333)](#install)
-[![MIT](https://img.shields.io/badge/license-MIT-c65a16)](LICENSE)
+- Five inherited Swift + Metal effects: Duo, Roll, Shutter, Flex, and Iris.
+- New Subtle, Cinematic, and Crisp motion presets.
+- New personal preset saved locally across launches.
+- New calibration to your normal working lid angle.
+- New teal visual identity, original geometric icon, and in-app attribution.
+- Independent app identity and preferences so it can coexist with MacDuo.
+- Developer ID signing and notarization packaging script for direct distribution.
 
-### [↓ Download Mac Duo](https://github.com/DhananjayBhosale/MacDuo/releases/latest/download/Mac-Duo.dmg)
+Requires macOS 14+, Apple silicon, and a compatible MacBook lid sensor for automatic effects. External displays are not animated. A generated-artwork preview works without Screen Recording permission; animating the real desktop requires permission. No account, analytics, or network service is added. Frames remain in memory on the Mac.
 
-[Website](https://macduo.dhananjaytech.app/) · [All releases & ZIP](https://github.com/DhananjayBhosale/MacDuo/releases) · [Build from source](docs/DEVELOPMENT.md) · [Report an issue](https://github.com/DhananjayBhosale/MacDuo/issues)
+## Build and test
 
-<p align="center"><a href="https://macduo.dhananjaytech.app/"><img src="docs/assets/effects-preview.gif" alt="Generated artwork showing the Duo effect closing and reopening" width="720"></a><br><sub>Generated Duo demo. Your real desktop stays on your Mac.</sub></p>
+```sh
+swift test
+./build.sh
+open "$HOME/Library/Caches/Hinge/build/Hinge.app"
+"$HOME/Library/Caches/Hinge/build/Hinge.app/Contents/MacOS/Hinge" --render-check validation
+```
 
-## Five ways to close
+Tests require a full Xcode installation. If your active toolchain is Command Line Tools, run with `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` (adjust for your Xcode location).
 
-| Effect | What it feels like |
-|---|---|
-| **Duo** · default | The desktop expands, softens and disappears around the hinge. |
-| **Roll** | A flexible display curling into a roll. |
-| **Shutter** | Four rigid panels sliding behind one another. |
-| **Flex** | A continuous display bowing under tension. |
-| **Iris** | Precision blades closing around the desktop. |
+Signed app bundles are built in `~/Library/Caches/Hinge/build` to avoid file-provider metadata in synced Documents folders. Override with `HINGE_OUTPUT_DIR` if needed.
 
-<p><a href="https://macduo.dhananjaytech.app/#effects"><img src="docs/assets/roll.jpg" alt="Roll effect" width="24%"> <img src="docs/assets/shutter.jpg" alt="Shutter effect" width="24%"> <img src="docs/assets/flex.jpg" alt="Flex effect" width="24%"> <img src="docs/assets/iris.jpg" alt="Iris effect" width="24%"></a></p>
+The default build is ad-hoc signed for local preview. Use `HINGE_SIGNING_IDENTITY` to select a signing identity. Do not upload the preview build as a finished paid download.
 
-Hold the lid still and the screen clears after **1–5 seconds**—**2 seconds** by default. Live preview, compact floating controls, orange Light/Dark themes, and menu-bar access are included. Close settings or switch desktops: Mac Duo keeps following in the background, without raising its window. Press **Esc** or **⌃⌥⌘F** to pause.
+Open **Motion studio** for presets, personal settings, and calibration. Use **Replay** to try the generated preview. Enable Hinge only when ready to grant screen access. Esc and Control–Option–Command–F pause the desktop overlay.
 
-## Install
+## Release
 
-**Apple silicon · macOS 14+ · compatible MacBook lid sensor.** Tested on an M4 MacBook Pro. External displays are not animated.
+See [the release checklist](release/CHECKLIST.md), [Gumroad listing draft](release/GUMROAD.md), and [development notes](docs/DEVELOPMENT.md). The customer packaging command is:
 
-1. [Download **Mac-Duo.dmg**](https://github.com/DhananjayBhosale/MacDuo/releases/latest/download/Mac-Duo.dmg), open it, and drag **Mac Duo** into **Applications**.
-2. Open **Mac Duo** from Applications. This release is **not notarized**, so macOS may initially block it with “cannot be opened” or “Apple could not verify” wording.
-3. After trying to open it, go to **System Settings → Privacy & Security**, scroll to **Security**, click **Open Anyway** for **Mac Duo**, then confirm **Open**. [Apple’s instructions](https://support.apple.com/102445).
-4. In Mac Duo, click **Enable Mac Duo** and allow **Screen Recording** when prompted. Reopen the app if macOS asks. Desktop frames stay in memory; nothing is recorded or uploaded.
+```sh
+HINGE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
+HINGE_NOTARY_PROFILE='your-keychain-profile' ./scripts/package-release.sh
+```
 
-Try **Replay** first—it works without Screen Recording permission. For manual control, turn off **Follow my lid**. Keep **Clear when the lid is still** enabled for normal use at any angle.
+## Credits and license
 
-<details><summary><strong>Updating or using the ZIP instead</strong></summary>
-
-Quit Mac Duo before replacing the app in Applications. For the ZIP, unzip it and move **Mac Duo.app** into Applications, then follow steps 2–4 above. Development signatures may require granting Screen Recording again after an update. If permission appears enabled but capture fails, remove the old Mac Duo entry in Screen Recording settings, add the current app from Applications, and reopen it.
-
-</details>
-
-## Small, local, open
-
-Native **Swift + Metal**, with no third-party runtime dependencies, accounts, analytics or network access. Settled previews stop rendering; blur is cached. Rendering is capped according to power and temperature, with up to 120 Hz requested on supported displays while plugged in. Actual frame rate and battery impact vary by Mac.
-
-[Build & verification](docs/DEVELOPMENT.md) · [Reference credits](ATTRIBUTION.md) · [MIT license](LICENSE)
-
-Independent software, not affiliated with Apple. Contributions and hardware reports are welcome.
+Hinge is a modified distribution of [MacDuo](https://github.com/DhananjayBhosale/MacDuo), copyright 2026 Mac Duo contributors, licensed under MIT. Its core rendering, capture, and sensor implementation are inherited. The license and attribution are retained in the repository and bundled app. See [LICENSE](LICENSE) and [ATTRIBUTION.md](ATTRIBUTION.md). Independent software, not affiliated with Apple or the upstream authors.

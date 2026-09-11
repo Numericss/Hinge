@@ -8,7 +8,7 @@ import OSLog
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
     private var screenObserver: NSObjectProtocol?
-    private let logger = Logger(subsystem:"local.lidflow.mac",category:"settings")
+    private let logger = Logger(subsystem:"com.datalynlabs.hinge.mac",category:"settings")
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
         let content = NSHostingView(rootView:Controls(model:model))
@@ -17,7 +17,7 @@ import OSLog
         content.sizingOptions = []
         window = NSWindow(contentRect:NSRect(x:0,y:0,width:940,height:528),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
         window.delegate = self
-        window.title = "Mac Duo"
+        window.title = "Hinge"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .windowBackgroundColor
         window.contentView = content
@@ -37,12 +37,12 @@ import OSLog
         }
         statusItem = NSStatusBar.system.statusItem(withLength:NSStatusItem.variableLength)
         statusItem.button?.image = AppBrand.menuBarMark
-        statusItem.button?.toolTip = "Mac Duo — your desktop follows your lid"
+        statusItem.button?.toolTip = "Hinge — your desktop follows your lid"
         let menu = NSMenu();menu.delegate = self;statusItem.menu = menu
         let appMenu = NSMenu()
         let appItem = NSMenuItem();appMenu.addItem(appItem)
         let submenu = NSMenu();submenu.addItem(effectItem());submenu.addItem(appearanceItem());submenu.addItem(.separator())
-        submenu.addItem(withTitle:"Quit Mac Duo",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
+        submenu.addItem(withTitle:"Quit Hinge",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
         appItem.submenu = submenu;NSApp.mainMenu = appMenu
         showSettings()
         if let index = CommandLine.arguments.firstIndex(of:"--overlay-check"), index+1 < CommandLine.arguments.count {
@@ -156,13 +156,13 @@ import OSLog
         let state = NSMenuItem(title:model.lidAngle.map{String(format:"Lid angle: %.0f°",$0)} ?? "Sensor unavailable",action:nil,keyEquivalent:"")
         state.isEnabled = false;menu.addItem(state)
         menu.addItem(.separator())
-        let toggle = menu.addItem(withTitle:model.enabled ? "Pause Mac Duo" : "Enable Mac Duo",action:#selector(toggleEffect),keyEquivalent:"");toggle.target = self
-        let settings = menu.addItem(withTitle:"Open Mac Duo…",action:#selector(showSettings),keyEquivalent:",");settings.target = self
+        let toggle = menu.addItem(withTitle:model.enabled ? "Pause Hinge" : "Enable Hinge",action:#selector(toggleEffect),keyEquivalent:"");toggle.target = self
+        let settings = menu.addItem(withTitle:"Open Hinge…",action:#selector(showSettings),keyEquivalent:",");settings.target = self
         let test = menu.addItem(withTitle:"Test desktop for 8 seconds",action:#selector(testEffect),keyEquivalent:"");test.target = self
         menu.addItem(effectItem())
         menu.addItem(appearanceItem())
         menu.addItem(.separator())
-        menu.addItem(withTitle:"Quit Mac Duo",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
+        menu.addItem(withTitle:"Quit Hinge",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication) -> Bool { false }
     func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows flag:Bool) -> Bool { showSettings();return true }
