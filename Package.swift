@@ -5,5 +5,6 @@ let package = Package(name: "Hinge", platforms: [.macOS(.v14)], products: [
 ], targets: [
     .target(name: "FoldCore"),
     .executableTarget(name: "Hinge", dependencies: ["FoldCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
-    .testTarget(name: "FoldCoreTests", dependencies: ["FoldCore"])
+    .testTarget(name: "FoldCoreTests", dependencies: ["FoldCore"]),
+    .testTarget(name: "HingeTests", dependencies: ["Hinge", "FoldCore"])
 ])

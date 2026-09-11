@@ -10,4 +10,4 @@ Saving a preset writes to UserDefaults. Loading one clamps rendering values and 
 
 `./build.sh` creates `~/Library/Caches/Hinge/build/Hinge.app` and includes both LICENSE and ATTRIBUTION.md. `scripts/package-release.sh` requires a Developer ID Application identity and notarytool profile; it produces a customer ZIP only after notarization, stapling, and Gatekeeper assessment.
 
-The upstream source history is retained, and the source remote is named `upstream`. No seller repository has been configured. See ATTRIBUTION.md for inherited research notes and license provenance.
+The upstream source history is retained, and the source remote is named `upstream`. The Hinge repository is https://github.com/Numericss/Hinge (`origin`); MacDuo remains the `upstream` remote. See ATTRIBUTION.md for inherited research notes and license provenance.

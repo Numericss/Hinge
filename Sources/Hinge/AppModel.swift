@@ -38,41 +38,41 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     @Published var checkingPermission = false
     @Published var status = "Preview is ready. Enable Hinge to use your desktop."
     @Published var hasPermission = CGPreflightScreenCaptureAccess()
-    @Published var followLid = UserDefaults.standard.object(forKey:"followLid") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(followLid,forKey:"followLid") }
+    @Published var followLid = true {
+        didSet { preferences.set(followLid,forKey:"followLid") }
     }
-    @Published var appearance = AppAppearance(rawValue:UserDefaults.standard.string(forKey:"appearance") ?? "system") ?? .system {
+    @Published var appearance = AppAppearance.system {
         didSet {
-            UserDefaults.standard.set(appearance.rawValue,forKey:"appearance")
+            preferences.set(appearance.rawValue,forKey:"appearance")
             NSApp.appearance = appearance.native
         }
     }
     /// Choosing an effect only saves and redraws. It never starts a full-screen demo.
-    @Published var effect = FoldEffect.resolve(persisted:UserDefaults.standard.string(forKey:"effect")) {
+    @Published var effect = FoldEffect.fallback {
         didSet {
             guard oldValue != effect else { return }
-            UserDefaults.standard.set(effect.persistedIdentifier,forKey:"effect")
+            preferences.set(effect.persistedIdentifier,forKey:"effect")
             wakePreview()
             update()
         }
     }
     @Published var previewAngle = 72.0
-    @Published var clearAngle = UserDefaults.standard.object(forKey:"clearAngle") as? Double ?? 105 {
-        didSet { UserDefaults.standard.set(clearAngle,forKey:"clearAngle") }
+    @Published var clearAngle = 105.0 {
+        didSet { preferences.set(clearAngle,forKey:"clearAngle") }
     }
-    @Published var perspective = UserDefaults.standard.object(forKey:"perspective") as? Double ?? 0.7 {
-        didSet { UserDefaults.standard.set(perspective,forKey:"perspective") }
+    @Published var perspective = 0.7 {
+        didSet { preferences.set(perspective,forKey:"perspective") }
     }
-    @Published var blur = UserDefaults.standard.object(forKey:"blur") as? Double ?? 0.65 {
-        didSet { UserDefaults.standard.set(blur,forKey:"blur") }
+    @Published var blur = 0.65 {
+        didSet { preferences.set(blur,forKey:"blur") }
     }
-    @Published var shadow = UserDefaults.standard.object(forKey:"shadow") as? Double ?? 0.65 {
-        didSet { UserDefaults.standard.set(shadow,forKey:"shadow") }
+    @Published var shadow = 0.65 {
+        didSet { preferences.set(shadow,forKey:"shadow") }
     }
-    @Published var clearWhenStill = UserDefaults.standard.object(forKey:"clearWhenStill") as? Bool ?? true {
+    @Published var clearWhenStill = true {
         didSet {
             if oldValue != clearWhenStill {
-                UserDefaults.standard.set(clearWhenStill,forKey:"clearWhenStill")
+                preferences.set(clearWhenStill,forKey:"clearWhenStill")
                 resetStillness()
                 updateStillnessStatus()
                 update()
@@ -80,8 +80,8 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
     }
     @Published private(set) var lidIsStill = false
-    @Published var stillnessDelay = UserDefaults.standard.object(forKey:"stillnessDelay") as? Double ?? 2 {
-        didSet { UserDefaults.standard.set(stillnessDelay,forKey:"stillnessDelay") }
+    @Published var stillnessDelay = 2.0 {
+        didSet { preferences.set(stillnessDelay,forKey:"stillnessDelay") }
     }
     @Published var demoRunning = false
     @Published var previewPlaying = false
@@ -99,6 +99,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     private var metalView: MTKView?
     private var timer: Timer?
     private var enableTask: Task<Void, Never>?
+    private var enableAttempt: UUID?
     private let logger = Logger(subsystem:"com.datalynlabs.hinge.mac",category:"lifecycle")
     private var hotKey: EventHotKeyRef?
     private var escapeKey: EventHotKeyRef?
@@ -122,7 +123,26 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var showWindow: (() -> Void)?
     var overlayVisibilityChanged: ((Bool) -> Void)?
 
-    init() {
+    private let preferences: UserDefaults
+    private let verifyCaptureAccess: (@MainActor () async throws -> Void)?
+
+    // Tests use their own preference suite and skip HID, timers, and global hotkeys.
+    init(preferences: UserDefaults = .standard, startServices: Bool = true,
+         verifyCaptureAccess: (@MainActor () async throws -> Void)? = nil) {
+        self.preferences = preferences
+        self.verifyCaptureAccess = verifyCaptureAccess
+        _followLid = Published(initialValue:preferences.object(forKey:"followLid") as? Bool ?? true)
+        _appearance = Published(initialValue:AppAppearance(rawValue:preferences.string(forKey:"appearance") ?? "system") ?? .system)
+        _effect = Published(initialValue:FoldEffect.resolve(persisted:preferences.string(forKey:"effect")))
+        _clearAngle = Published(initialValue:preferences.object(forKey:"clearAngle") as? Double ?? 105)
+        _perspective = Published(initialValue:preferences.object(forKey:"perspective") as? Double ?? 0.7)
+        _blur = Published(initialValue:preferences.object(forKey:"blur") as? Double ?? 0.65)
+        _shadow = Published(initialValue:preferences.object(forKey:"shadow") as? Double ?? 0.65)
+        _clearWhenStill = Published(initialValue:preferences.object(forKey:"clearWhenStill") as? Bool ?? true)
+        _stillnessDelay = Published(initialValue:preferences.object(forKey:"stillnessDelay") as? Double ?? 2)
+        personalPreset = preferences.data(forKey:"personalPreset")
+            .flatMap { try? JSONDecoder().decode(MotionPreset.self,from:$0) }?.validated
+        guard startServices else { return }
         NSApp.appearance = appearance.native
         sensor.onReading = { [weak self] angle in
             guard let self else { return }
@@ -157,13 +177,21 @@ enum AppAppearance: String, CaseIterable, Identifiable {
             let t = ProcessInfo.processInfo.systemUptime-start
             if t <= 5 { return FoldMath.progress(angle: demoAngle(t/5),clearAngle:clearAngle) }
         }
-        if followLid { return liveProgress }
+        if followLid {
+            if enabled { return liveProgress }
+            // Generated artwork can follow the sensor before screen access is enabled.
+            guard sensorAvailable, sessionActive, systemAwake, displayAwake,
+                  !shouldClearForStillness, let angle = lidAngle else { return 0 }
+            return FoldMath.progress(angle:angle,clearAngle:clearAngle)
+        }
         return FoldMath.progress(angle:previewAngle,clearAngle:clearAngle)
     }
 
     /// Both Metal views use this clock in live mode, including the fade to clear.
     func animatedProgress(preview: Bool) -> Double? {
-        if preview && (!followLid || previewPlaying) { return nil }
+        // Only share the desktop clock while an overlay actually exists. Otherwise
+        // the preview's renderer smooths its own target, including before enablement.
+        if preview && (!followLid || previewPlaying || !overlayVisible) { return nil }
         return liveAnimation.sample(target:overlayVisible ? liveProgress : 0,
                                     at:ProcessInfo.processInfo.systemUptime)
     }
@@ -232,16 +260,27 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         guard !checkingPermission else { return }
         guard device != nil else { status = "This Mac does not have a supported Metal GPU.";return }
         guard sensorAvailable else { status = "No working lid angle sensor was found. The preview still works.";return }
+        let attempt = UUID()
+        enableAttempt = attempt
         checkingPermission = true
         status = "Checking screen access…"
         enableTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.checkingPermission = false }
+            defer {
+                // ScreenCaptureKit may finish after cancellation. An older attempt
+                // must not clear the spinner or task belonging to a newer request.
+                if self.enableAttempt == attempt {
+                    self.checkingPermission = false
+                    self.enableAttempt = nil
+                    self.enableTask = nil
+                }
+            }
             do {
                 // Ask the API we actually use. Core Graphics preflight can retain an old
                 // permission result and must not block an otherwise authorized SCK session.
-                try await capture.verifyAccess()
-                guard !Task.isCancelled else { return }
+                if let verifyCaptureAccess { try await verifyCaptureAccess() }
+                else { try await capture.verifyAccess() }
+                guard self.enableAttempt == attempt, !Task.isCancelled else { return }
                 self.hasPermission = true
                 self.enabled = true
                 self.status = "Following your lid. Close it gently to see the effect."
@@ -249,7 +288,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
                 self.logger.notice("Enable succeeded: ScreenCaptureKit access verified.")
                 if startDesktopTest { self.beginDesktopTest() } else { self.update() }
             } catch {
-                guard !Task.isCancelled else { return }
+                guard self.enableAttempt == attempt, !Task.isCancelled else { return }
                 self.enabled = false
                 let failure = error as NSError
                 if failure.domain == SCStreamErrorDomain && failure.code == SCStreamError.Code.userDeclined.rawValue {
@@ -265,6 +304,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     func pause(_ message: String = "Paused. Your desktop is clear.") {
         logger.notice("Following paused: \(message,privacy:.public)")
+        enableAttempt = nil
         enableTask?.cancel();enableTask = nil;checkingPermission = false
         if let path = syntheticCheckPath {
             let report: [String:Any] = ["generatedArtworkOnly":true,"screenCaptureStarted":capture.isRunning,
@@ -280,8 +320,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         hideOverlay();capture.stop();status = message
     }
 
-    @Published private(set) var personalPreset = UserDefaults.standard.data(forKey:"personalPreset")
-        .flatMap { try? JSONDecoder().decode(MotionPreset.self,from:$0) }?.validated
+    @Published private(set) var personalPreset: MotionPreset?
 
     func applyPreset(_ preset: MotionPreset) {
         let value = preset.validated
@@ -296,7 +335,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         let value = MotionPreset(effect:effect,perspective:perspective,softness:blur,shadow:shadow,
                                  clearAngle:clearAngle,stillnessDelay:stillnessDelay,clearWhenStill:clearWhenStill)
         guard let data = try? JSONEncoder().encode(value) else { return }
-        UserDefaults.standard.set(data,forKey:"personalPreset")
+        preferences.set(data,forKey:"personalPreset")
         personalPreset = value
     }
 

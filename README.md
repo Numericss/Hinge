@@ -1,5 +1,7 @@
 # Hinge
 
+Project repository: [Numericss/Hinge](https://github.com/Numericss/Hinge).
+
 A native macOS desktop-effects app that responds to a compatible MacBook lid sensor. Working product name; version 0.1.0 is a development preview, not yet a customer release.
 
 ## Our version
