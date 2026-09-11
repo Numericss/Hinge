@@ -2,7 +2,7 @@
 
 Run `swift test`, `./build.sh`, and `"$HOME/Library/Caches/Hinge/build/Hinge.app/Contents/MacOS/Hinge" --render-check validation` from the repository root. Metal checks render synthetic artwork and require a working GPU session. They do not request Screen Recording.
 
-`Sources/FoldCore` contains effect metadata, math, stillness/frame pacing, and the new serializable motion preset type. `Sources/Hinge` contains the inherited sensor/capture/Metal implementation and native controls. `StudioSettings.swift` is the new preset/calibration interface.
+`Sources/FoldCore` contains effect metadata, math, stillness/frame pacing, and the new serializable motion preset type. `Sources/Hinge` contains the inherited sensor/capture/Metal implementation and native controls. `WorkspaceView.swift` contains the native Effects, Motion, and Setup & Help workspace. `Controls.swift` hosts the Metal preview bridge.
 
 The application uses `com.datalynlabs.hinge.mac` as its working bundle identity. Confirm it before initial distribution; changing it later can affect stored preferences and Screen Recording permission. No upstream preferences are migrated.
 

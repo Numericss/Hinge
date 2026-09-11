@@ -114,6 +114,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     private var liveAnimation = FoldAnimation()
     private var powerCheckedAt: TimeInterval = -.infinity
     private var demoStart: TimeInterval?
+    private var enabledBeforeDesktopTest = false
     private var previewStart: TimeInterval?
     private var idleSince: TimeInterval?
     private var screenID: CGDirectDisplayID?
@@ -134,12 +135,18 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         _followLid = Published(initialValue:preferences.object(forKey:"followLid") as? Bool ?? true)
         _appearance = Published(initialValue:AppAppearance(rawValue:preferences.string(forKey:"appearance") ?? "system") ?? .system)
         _effect = Published(initialValue:FoldEffect.resolve(persisted:preferences.string(forKey:"effect")))
-        _clearAngle = Published(initialValue:preferences.object(forKey:"clearAngle") as? Double ?? 105)
-        _perspective = Published(initialValue:preferences.object(forKey:"perspective") as? Double ?? 0.7)
-        _blur = Published(initialValue:preferences.object(forKey:"blur") as? Double ?? 0.65)
-        _shadow = Published(initialValue:preferences.object(forKey:"shadow") as? Double ?? 0.65)
+        let saved = MotionPreset(effect:effect,
+            perspective:preferences.object(forKey:"perspective") as? Double ?? 0.7,
+            softness:preferences.object(forKey:"blur") as? Double ?? 0.65,
+            shadow:preferences.object(forKey:"shadow") as? Double ?? 0.65,
+            clearAngle:preferences.object(forKey:"clearAngle") as? Double ?? 105,
+            stillnessDelay:preferences.object(forKey:"stillnessDelay") as? Double ?? 2)
+        _clearAngle = Published(initialValue:saved.clearAngle)
+        _perspective = Published(initialValue:saved.perspective)
+        _blur = Published(initialValue:saved.softness)
+        _shadow = Published(initialValue:saved.shadow)
         _clearWhenStill = Published(initialValue:preferences.object(forKey:"clearWhenStill") as? Bool ?? true)
-        _stillnessDelay = Published(initialValue:preferences.object(forKey:"stillnessDelay") as? Double ?? 2)
+        _stillnessDelay = Published(initialValue:saved.stillnessDelay)
         personalPreset = preferences.data(forKey:"personalPreset")
             .flatMap { try? JSONDecoder().decode(MotionPreset.self,from:$0) }?.validated
         guard startServices else { return }
@@ -260,6 +267,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         guard !checkingPermission else { return }
         guard device != nil else { status = "This Mac does not have a supported Metal GPU.";return }
         guard sensorAvailable else { status = "No working lid angle sensor was found. The preview still works.";return }
+        if startDesktopTest { enabledBeforeDesktopTest = enabled }
         let attempt = UUID()
         enableAttempt = attempt
         checkingPermission = true
@@ -350,11 +358,43 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         resetStillness(); wakePreview(); update()
     }
 
-    func playPreview() { previewStart = ProcessInfo.processInfo.systemUptime;previewPlaying = true }
+    func playPreview() {
+        previewStart = ProcessInfo.processInfo.systemUptime; previewPlaying = true; wakePreview()
+    }
+
+    func stopPreview() {
+        previewStart = nil; previewPlaying = false; wakePreview()
+    }
+
+    var activityTitle: String {
+        if checkingPermission { return "Checking screen access" }
+        if demoRunning { return "Testing your desktop" }
+        if enabled { return lidIsStill && clearWhenStill ? "Enabled · lid is still" : "Following your lid" }
+        return "Desktop effects are off"
+    }
+
+    func resetMotion() {
+        applyPreset(MotionPreset(effect:effect,perspective:0.7,softness:0.65,shadow:0.65,
+                                 clearAngle:105,stillnessDelay:2))
+    }
 
     func testDesktop() {
+        guard !demoRunning, !checkingPermission else { return }
+        enabledBeforeDesktopTest = enabled
         if !enabled { enable(startDesktopTest:true);return }
         beginDesktopTest()
+    }
+
+    /// A temporary test must not silently opt the user into persistent capture.
+    func finishDesktopTest() {
+        guard demoRunning else { return }
+        demoStart = nil; demoRunning = false
+        if enabledBeforeDesktopTest {
+            status = "Desktop test finished. Following your lid."
+            updateStillnessStatus()
+        } else {
+            pause("Desktop test finished. Your desktop is clear.")
+        }
     }
 
     private func beginDesktopTest() {
@@ -432,9 +472,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
         if let start = demoStart, now-start > demoDuration {
             if syntheticCheckPath != nil { pause("Synthetic overlay test completed.");return }
-            demoStart = nil;demoRunning = false
-            status = "Desktop test finished. Following your lid."
-            updateStillnessStatus()
+            finishDesktopTest()
             logger.notice("Desktop test completed; overlay is clearing.")
         }
         guard enabled, sessionActive, systemAwake, displayAwake else { return }

@@ -1,4 +1,6 @@
-# Hinge Gumroad mockups
+# Hinge Gumroad mockups — version 0.1
+
+These images show the earlier interface. Create new screenshots or mockups before advertising Hinge 2.0.
 
 Generated with the built-in image generation tool using the running Hinge app as a visual reference. These are promotional mockups, not pixel-exact screenshots. Working name: Hinge. No price, endorsement, compatibility guarantee, or notarization claim is included.
 

@@ -12,18 +12,21 @@ import OSLog
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
         let content = NSHostingView(rootView:Controls(model:model))
-        // The window owns its size. SwiftUI's ideal content height must never
-        // stretch it to the screen edges; every control stays visible beside the preview.
+        // Scrollable detail pages keep native text readable at smaller window sizes.
         content.sizingOptions = []
-        window = NSWindow(contentRect:NSRect(x:0,y:0,width:940,height:528),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
+        window = NSWindow(contentRect:NSRect(x:0,y:0,width:1020,height:760),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false)
         window.delegate = self
         window.title = "Hinge"
         window.titlebarAppearsTransparent = true
+        window.toolbar = NSToolbar(identifier:"HingeWorkspace")
+        window.toolbarStyle = .unifiedCompact
+        window.setFrameAutosaveName("HingeWorkspaceV2")
         window.backgroundColor = .windowBackgroundColor
         window.contentView = content
         window.collectionBehavior = [.fullScreenNone]
         window.isReleasedWhenClosed = false
-        fitSettingsWindow(center:true)
+        let restoredFrame = window.setFrameUsingName("HingeWorkspaceV2")
+        fitSettingsWindow(center:!restoredFrame)
         screenObserver = NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main) { [weak self] _ in
             MainActor.assumeIsolated { self?.fitSettingsWindow() }
         }
@@ -41,7 +44,10 @@ import OSLog
         let menu = NSMenu();menu.delegate = self;statusItem.menu = menu
         let appMenu = NSMenu()
         let appItem = NSMenuItem();appMenu.addItem(appItem)
-        let submenu = NSMenu();submenu.addItem(effectItem());submenu.addItem(appearanceItem());submenu.addItem(.separator())
+        let submenu = NSMenu()
+        let settingsItem = submenu.addItem(withTitle:"Hinge Settings…",action:#selector(showSettings),keyEquivalent:",")
+        settingsItem.target = self
+        submenu.addItem(.separator());submenu.addItem(effectItem());submenu.addItem(appearanceItem());submenu.addItem(.separator())
         submenu.addItem(withTitle:"Quit Hinge",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
         appItem.submenu = submenu;NSApp.mainMenu = appMenu
         showSettings()
@@ -60,10 +66,10 @@ import OSLog
 
     private func fitSettingsWindow(center: Bool = false) {
         let bounds = floatingBounds
-        window.minSize = NSSize(width:min(900,bounds.width),height:min(530,bounds.height))
+        window.minSize = NSSize(width:min(860,bounds.width),height:min(600,bounds.height))
         window.maxSize = bounds.size
         var frame = window.frame
-        frame.size = NSSize(width:min(center ? 940 : frame.width,bounds.width),height:min(center ? 550 : frame.height,bounds.height))
+        frame.size = NSSize(width:min(center ? 1020 : frame.width,bounds.width),height:min(center ? 780 : frame.height,bounds.height))
         if center {
             frame.origin = NSPoint(x:bounds.midX-frame.width/2,y:bounds.midY-frame.height/2)
         } else {
@@ -80,7 +86,7 @@ import OSLog
     func windowDidChangeScreen(_ notification: Notification) { fitSettingsWindow() }
     func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame: NSRect) -> NSRect {
         let bounds = floatingBounds
-        let size = NSSize(width:min(940,bounds.width),height:min(550,bounds.height))
+        let size = NSSize(width:min(1020,bounds.width),height:min(780,bounds.height))
         return NSRect(x:bounds.midX-size.width/2,y:bounds.midY-size.height/2,width:size.width,height:size.height)
     }
     @objc func showSettings() { fitSettingsWindow();NSApp.activate(ignoringOtherApps:true);window.makeKeyAndOrderFront(nil);model.wakePreview() }
@@ -104,7 +110,7 @@ import OSLog
         else { model.previewView?.isPaused = true }
     }
     func windowWillClose(_ notification:Notification) { model.previewView?.isPaused = true }
-    @objc func toggleEffect() { if model.enabled { model.pause() } else { model.enable() } }
+    @objc func toggleEffect() { if model.enabled || model.checkingPermission { model.pause() } else { model.enable() } }
     @objc func testEffect() { model.testDesktop() }
     @objc private func setAppearance(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
@@ -155,8 +161,9 @@ import OSLog
         menu.removeAllItems()
         let state = NSMenuItem(title:model.lidAngle.map{String(format:"Lid angle: %.0f°",$0)} ?? "Sensor unavailable",action:nil,keyEquivalent:"")
         state.isEnabled = false;menu.addItem(state)
+        let activity = NSMenuItem(title:model.activityTitle,action:nil,keyEquivalent:""); activity.isEnabled = false; menu.addItem(activity)
         menu.addItem(.separator())
-        let toggle = menu.addItem(withTitle:model.enabled ? "Pause Hinge" : "Enable Hinge",action:#selector(toggleEffect),keyEquivalent:"");toggle.target = self
+        let toggle = menu.addItem(withTitle:model.checkingPermission ? "Cancel enabling" : model.enabled ? "Pause Hinge" : "Enable Hinge",action:#selector(toggleEffect),keyEquivalent:"");toggle.target = self
         let settings = menu.addItem(withTitle:"Open Hinge…",action:#selector(showSettings),keyEquivalent:",");settings.target = self
         let test = menu.addItem(withTitle:"Test desktop for 8 seconds",action:#selector(testEffect),keyEquivalent:"");test.target = self
         menu.addItem(effectItem())

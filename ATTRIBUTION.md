@@ -1,6 +1,6 @@
 # Hinge attribution
 
-Hinge is a modified distribution of [MacDuo](https://github.com/DhananjayBhosale/MacDuo) by Mac Duo contributors, used under the MIT license. Fork baseline: `f3b79d80874337039351a30778df167e49e8ae3a`. The original license is included in LICENSE and in the app bundle. Hinge adds motion presets, personal preset persistence, calibration controls, revised branding, and distribution tooling. Hinge is independently maintained and is not endorsed by the upstream authors.
+Hinge is a modified distribution of [MacDuo](https://github.com/DhananjayBhosale/MacDuo) by Mac Duo contributors, used under the MIT license. Fork baseline: `f3b79d80874337039351a30778df167e49e8ae3a`. The original license is included in LICENSE and in the app bundle. Hinge adds motion presets, personal preset persistence, calibration controls, revised branding, and distribution tooling. Version 2.0 adds a native sidebar workspace, guided setup, preview controls, and lifecycle fixes. Hinge is independently maintained and is not endorsed by the upstream authors.
 
 The following notes are preserved from upstream and describe its implementation and reference history.
 
