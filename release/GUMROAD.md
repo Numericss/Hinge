@@ -1,6 +1,6 @@
-# Gumroad listing draft — not published
+# Gumroad 3.0 listing copy — draft update
 
-Product name (working): Hinge 2.0
+Product name (working): Hinge 3.0
 Tagline: Give your MacBook a little motion.
 
 Hinge adds a playful finishing touch to your Mac: desktop effects that respond as you move its lid. Choose from five effects, start with a mood preset, and save a setup that feels like yours.
@@ -9,8 +9,10 @@ Hinge adds a playful finishing touch to your Mac: desktop effects that respond a
 
 - Five lid-reactive effects: Duo, Roll, Shutter, Flex, and Iris.
 - Subtle, Cinematic, and Crisp presets.
-- Native Effects, Motion, and Setup & Help pages.
-- One saved personal preset and working-angle calibration.
+- Native Effects, Motion, Automation, and Setup & Help pages.
+- Named presets with save, rename, and delete, plus working-angle calibration.
+- Battery-aware performance modes and optional automatic pause rules.
+- Guided setup, optional launch at login, and local diagnostics export.
 - One-click effect previews and a clear status area.
 - Live preview and a replay mode that works without screen access.
 - Menu-bar controls, light and dark appearance, and quick pause shortcuts.

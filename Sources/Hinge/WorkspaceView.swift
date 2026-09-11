@@ -2,13 +2,14 @@ import SwiftUI
 import FoldCore
 
 private enum WorkspacePage: String, CaseIterable, Identifiable {
-    case effects = "Effects", motion = "Motion", setup = "Setup & Help"
+    case effects = "Effects", motion = "Motion", automation = "Automation", setup = "Setup & Help"
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .effects: return "sparkles"
         case .motion: return "slider.horizontal.3"
         case .setup: return "checkmark.shield"
+        case .automation: return "bolt.badge.clock"
         }
     }
 }
@@ -18,6 +19,10 @@ struct Controls: View {
     @State private var page: WorkspacePage? = .effects
     @State private var notice = ""
     @State private var resetConfirmation = false
+    @State private var presetName = ""
+    @State private var editingPresetID: UUID?
+    @State private var presetEditor = false
+    @State private var deletingPreset: SavedMotionPreset?
     @Environment(\.colorScheme) private var scheme
     private var accent: Color { scheme == .dark ? Color(red:0.40,green:0.86,blue:0.80) : Color(red:0.02,green:0.43,blue:0.40) }
 
@@ -34,6 +39,7 @@ struct Controls: View {
                         case .effects: effects
                         case .motion: motion
                         case .setup: setup
+                        case .automation: automation
                         }
                     }.padding(24).frame(maxWidth:840).frame(maxWidth:.infinity)
                 }
@@ -43,6 +49,26 @@ struct Controls: View {
         }
         .background(Color(nsColor:.windowBackgroundColor))
         .tint(accent)
+        .onAppear { if !model.setupCompleted { page = .setup } }
+        .sheet(isPresented:$presetEditor) {
+            VStack(alignment:.leading,spacing:16) {
+                Text(editingPresetID == nil ? "Save a preset" : "Rename preset").font(.title2.bold())
+                TextField("Preset name",text:$presetName).textFieldStyle(.roundedBorder)
+                    .onSubmit { saveNamedPreset() }
+                HStack {
+                    Button("Cancel") { presetEditor = false }.keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Save") { saveNamedPreset() }.keyboardShortcut(.defaultAction)
+                        .disabled(presetName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                }
+            }.padding(24).frame(width:340)
+        }
+        .alert("Delete preset?",isPresented:Binding(get:{ deletingPreset != nil },set:{ if !$0 { deletingPreset = nil } })) {
+            Button("Cancel",role:.cancel) { deletingPreset = nil }
+            Button("Delete",role:.destructive) {
+                if let preset = deletingPreset { model.deletePreset(id:preset.id) }; deletingPreset = nil
+            }
+        } message: { Text("Only this saved preset is removed. Your current settings stay the same.") }
         .alert("Reset motion settings?",isPresented:$resetConfirmation) {
             Button("Cancel",role:.cancel) { }
             Button("Reset") { model.resetMotion(); notice = "Motion settings restored to their defaults." }
@@ -69,7 +95,7 @@ struct Controls: View {
                 Label(model.sensorAvailable ? "Lid sensor connected" : "Sensor unavailable",
                       systemImage:model.sensorAvailable ? "checkmark.circle" : "exclamationmark.circle")
                     .font(.caption).foregroundStyle(model.sensorAvailable ? .secondary : Color.orange)
-                Text("Version 2.0.1 Preview").font(.caption).foregroundStyle(.secondary)
+                Text("Version 3.0 Preview").font(.caption).foregroundStyle(.secondary)
             }.padding(16)
         }.background(.regularMaterial)
     }
@@ -78,7 +104,7 @@ struct Controls: View {
         HStack(spacing:16) {
             VStack(alignment:.leading,spacing:4) {
                 Text((page ?? .effects).rawValue).font(.title2.weight(.semibold))
-                Text(page == .motion ? "Make the movement yours." : page == .setup ? "Everything you need to get started." : "Choose a look. Give it a try.")
+                Text(page == .motion ? "Make the movement yours." : page == .automation ? "Less effort. Smarter motion." : page == .setup ? "Everything you need to get started." : "Choose a look. Give it a try.")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -193,6 +219,27 @@ struct Controls: View {
                 }
             }.padding(12)
         }
+        GroupBox("Your preset library") {
+            VStack(alignment:.leading,spacing:12) {
+                ForEach(model.savedPresets) { preset in
+                    HStack {
+                        VStack(alignment:.leading,spacing:3) {
+                            Text(preset.name).fontWeight(.medium)
+                            Text(preset.settings.effect.title).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Apply") { model.applyPreset(preset.settings); notice = "\(preset.name) applied." }
+                        Menu {
+                            Button("Rename…") { editingPresetID = preset.id; presetName = preset.name; presetEditor = true }
+                            Button("Delete…",role:.destructive) { deletingPreset = preset }
+                        } label: { Image(systemName:"ellipsis.circle") }.menuStyle(.borderlessButton).fixedSize()
+                            .accessibilityLabel("Options for \(preset.name)")
+                    }
+                }
+                if model.savedPresets.isEmpty { Text("Save a few different looks and switch between them from the menu bar.").foregroundStyle(.secondary) }
+                Button("Save current as new preset…") { editingPresetID = nil; presetName = ""; presetEditor = true }
+            }.padding(12)
+        }
         GroupBox("When the effect appears") {
             VStack(alignment:.leading,spacing:18) {
                 settingSlider("Clear angle",value:$model.clearAngle,range:60...140,unit:"°")
@@ -227,6 +274,54 @@ struct Controls: View {
         if !notice.isEmpty { Label(notice,systemImage:"checkmark.circle").foregroundStyle(accent) }
     }
 
+    private func saveNamedPreset() {
+        guard !presetName.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty else { return }
+        if let id = editingPresetID { model.renamePreset(id:id,name:presetName) }
+        else { model.savePreset(name:presetName) }
+        presetEditor = false; notice = "Preset saved."
+    }
+
+    @ViewBuilder private var automation: some View {
+        GroupBox("Performance") {
+            VStack(alignment:.leading,spacing:14) {
+                Picker("Rendering mode",selection:$model.performanceMode) {
+                    ForEach(PerformanceMode.allCases) { mode in Text(mode.title).tag(mode) }
+                }.pickerStyle(.segmented)
+                Text("Battery Saver uses a smaller capture and up to 30 fps. Balanced adapts between 30 and 60 fps. Smooth requests up to 120 fps on supported displays while plugged in.")
+                    .foregroundStyle(.secondary)
+                Text("All modes reduce work on battery, in Low Power Mode, or under thermal pressure. Actual frame rate depends on your Mac.").font(.callout).foregroundStyle(.secondary)
+                Label("\(model.onBattery ? "On battery" : "Plugged in") · up to \(model.fps) fps",systemImage:model.onBattery ? "battery.50percent" : "powerplug")
+            }.padding(12)
+        }
+        GroupBox("Smart Pause") {
+            VStack(alignment:.leading,spacing:14) {
+                Toggle("Pause when an external display is connected",isOn:$model.pauseOnExternalDisplay).toggleStyle(.switch)
+                Text("Pause while these apps are in the foreground:").foregroundStyle(.secondary)
+                ForEach(model.excludedApplications) { app in
+                    HStack {
+                        Text(app.name)
+                        Spacer()
+                        Button { model.removeExcludedApplication(id:app.id) } label: { Image(systemName:"minus.circle") }
+                            .accessibilityLabel("Remove \(app.name) from Smart Pause")
+                    }
+                }
+                Button("Add application…") { model.chooseExcludedApplications() }
+                Text("Effects resume when the condition ends, if Hinge is still enabled. Clicking Pause always keeps effects off.")
+                    .font(.callout).foregroundStyle(.secondary)
+                if let reason = model.automaticPauseReason { Label(reason,systemImage:"pause.circle").foregroundStyle(.orange) }
+            }.padding(12)
+        }
+        GroupBox("Start with your Mac") {
+            VStack(alignment:.leading,spacing:12) {
+                Toggle("Launch Hinge at login",isOn:Binding(get:{ model.launchAtLogin },set:{ model.setLaunchAtLogin($0) })).toggleStyle(.switch)
+                Text("Hinge becomes available in the menu bar. Desktop capture starts only when you enable it.").foregroundStyle(.secondary)
+                if model.loginNeedsApproval {
+                    Button("Approve in Login Items…") { model.openLoginSettings() }
+                }
+            }.padding(12)
+        }
+    }
+
     @ViewBuilder private var setup: some View {
         GroupBox("Get started") {
             VStack(alignment:.leading,spacing:18) {
@@ -249,6 +344,19 @@ struct Controls: View {
                 Text("If macOS asks you to reopen Hinge after granting permission, quit and open it again, then enable desktop effects.")
                     .font(.callout).foregroundStyle(.secondary)
             }.padding(12)
+        }
+        if !model.setupCompleted {
+            GroupBox("Finish your setup") {
+                VStack(alignment:.leading,spacing:12) {
+                    Text("Set the lid at your normal working angle. You can calibrate now or keep the current defaults.").foregroundStyle(.secondary)
+                    HStack {
+                        Button("Calibrate to current angle") { model.calibrate() }.disabled(!model.canCalibrate)
+                        Spacer()
+                        Button("Start using Hinge") { model.setupCompleted = true; page = .effects; model.playPreview() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }.padding(12)
+            }
         }
         GroupBox("Try it on your desktop") {
             VStack(alignment:.leading,spacing:12) {
@@ -273,9 +381,21 @@ struct Controls: View {
                 }
             }.padding(12)
         }
+        GroupBox("Diagnostics") {
+            VStack(alignment:.leading,spacing:12) {
+                Text(model.activityTitle).font(.headline)
+                Text(model.automaticPauseReason ?? model.status).foregroundStyle(.secondary)
+                Text("Export a local report with hardware availability, capture state, and performance settings. It contains no desktop images, app names, or account information.").font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Button("Export diagnostic report…") { model.exportDiagnostics() }
+                    Spacer()
+                    Button("Show setup again") { model.setupCompleted = false }
+                }
+            }.padding(12)
+        }
         GroupBox("About Hinge") {
             VStack(alignment:.leading,spacing:10) {
-                Text("Hinge 2.0.1 · Preview").font(.headline)
+                Text("Hinge 3.0 · Preview").font(.headline)
                 Text("A little motion. A more personal Mac.").foregroundStyle(.secondary)
                 Text("macOS 14+ · Apple silicon · compatible lid sensor\nHinge stays available in your menu bar when this window closes.")
                     .font(.callout).foregroundStyle(.secondary)

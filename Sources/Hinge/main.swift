@@ -7,6 +7,7 @@ import OSLog
     var model: AppModel!
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
+    private let quickPopover = NSPopover()
     private var screenObserver: NSObjectProtocol?
     private let logger = Logger(subsystem:"com.datalynlabs.hinge.mac",category:"settings")
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -41,7 +42,12 @@ import OSLog
         statusItem = NSStatusBar.system.statusItem(withLength:NSStatusItem.variableLength)
         statusItem.button?.image = AppBrand.menuBarMark
         statusItem.button?.toolTip = "Hinge — your desktop follows your lid"
-        let menu = NSMenu();menu.delegate = self;statusItem.menu = menu
+        quickPopover.behavior = .transient
+        quickPopover.contentViewController = NSHostingController(rootView:QuickControls(model:model,
+            openWorkspace:{ [weak self] in self?.quickPopover.performClose(nil); self?.showSettings() },
+            quit:{ NSApp.terminate(nil) }))
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(toggleQuickControls)
         let appMenu = NSMenu()
         let appItem = NSMenuItem();appMenu.addItem(appItem)
         let submenu = NSMenu()
@@ -89,6 +95,11 @@ import OSLog
         let size = NSSize(width:min(1020,bounds.width),height:min(780,bounds.height))
         return NSRect(x:bounds.midX-size.width/2,y:bounds.midY-size.height/2,width:size.width,height:size.height)
     }
+    @objc private func toggleQuickControls() {
+        guard let button = statusItem.button else { return }
+        if quickPopover.isShown { quickPopover.performClose(nil) }
+        else { quickPopover.show(relativeTo:button.bounds,of:button,preferredEdge:.minY) }
+    }
     @objc func showSettings() { fitSettingsWindow();NSApp.activate(ignoringOtherApps:true);window.makeKeyAndOrderFront(nil);model.wakePreview() }
     private func updateSettingsLevel() {
         guard let window, let model else { return }
@@ -101,7 +112,7 @@ import OSLog
             logger.notice("Settings level changed; elevated: \(elevated,privacy:.public); app active: \(NSApp.isActive,privacy:.public).")
         }
     }
-    func applicationDidBecomeActive(_ notification: Notification) { updateSettingsLevel() }
+    func applicationDidBecomeActive(_ notification: Notification) { updateSettingsLevel(); model.refreshLoginStatus() }
     func applicationDidResignActive(_ notification: Notification) { window?.level = .normal }
     func windowDidBecomeKey(_ notification: Notification) { updateSettingsLevel() }
     func windowDidResignKey(_ notification: Notification) { window?.level = .normal }
