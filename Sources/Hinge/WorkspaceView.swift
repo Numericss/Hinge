@@ -69,7 +69,7 @@ struct Controls: View {
                 Label(model.sensorAvailable ? "Lid sensor connected" : "Sensor unavailable",
                       systemImage:model.sensorAvailable ? "checkmark.circle" : "exclamationmark.circle")
                     .font(.caption).foregroundStyle(model.sensorAvailable ? .secondary : Color.orange)
-                Text("Version 2.0 Preview").font(.caption).foregroundStyle(.secondary)
+                Text("Version 2.0.1 Preview").font(.caption).foregroundStyle(.secondary)
             }.padding(16)
         }.background(.regularMaterial)
     }
@@ -275,7 +275,7 @@ struct Controls: View {
         }
         GroupBox("About Hinge") {
             VStack(alignment:.leading,spacing:10) {
-                Text("Hinge 2.0 · Preview").font(.headline)
+                Text("Hinge 2.0.1 · Preview").font(.headline)
                 Text("A little motion. A more personal Mac.").foregroundStyle(.secondary)
                 Text("macOS 14+ · Apple silicon · compatible lid sensor\nHinge stays available in your menu bar when this window closes.")
                     .font(.callout).foregroundStyle(.secondary)

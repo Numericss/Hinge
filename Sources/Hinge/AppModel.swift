@@ -203,6 +203,25 @@ enum AppAppearance: String, CaseIterable, Identifiable {
                                     at:ProcessInfo.processInfo.systemUptime)
     }
 
+    /// SwiftUI destroys the preview view when leaving Effects. Keep its expensive
+    /// GPU pipelines and artwork for the lifetime of the model, not the page.
+    func preparePreviewRenderer() throws -> FoldRenderer {
+        if let previewRenderer { return previewRenderer }
+        guard let device else { throw AppError.message("Metal is unavailable on this Mac.") }
+        let renderer = try FoldRenderer(device:device)
+        renderer.fallback = try renderer.makePreviewTexture()
+        renderer.parameters = { [weak self] in self?.uniforms(preview:true) ?? FoldUniforms() }
+        renderer.animatedProgress = { [weak self] in self?.animatedProgress(preview:true) }
+        renderer.pausesWhenSettled = true
+        renderer.keepsAnimating = { [weak self] in
+            guard let self else { return false }
+            return self.previewPlaying || (self.followLid && self.demoRunning)
+        }
+        renderer.onFailure = { [weak self] message in self?.status = message }
+        previewRenderer = renderer
+        return renderer
+    }
+
     func wakePreview() {
         if !overlayVisible { liveAnimation.prime(at:ProcessInfo.processInfo.systemUptime) }
         if let previewView { previewRenderer?.wake(previewView) }

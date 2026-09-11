@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 APP="${HINGE_OUTPUT_DIR:-$HOME/Library/Caches/Hinge/build}/Hinge.app"
 [[ -d "$APP" ]] || { echo 'Run ./build.sh first.' >&2; exit 1; }
 VERSION="$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")"
-[[ "$VERSION" == "2.0.0" ]] || { echo 'Expected Hinge 2.0.0. Rebuild or set HINGE_OUTPUT_DIR to the version 2 build.' >&2; exit 1; }
+[[ "$VERSION" == "2.0.1" ]] || { echo 'Expected Hinge 2.0.1. Rebuild or set HINGE_OUTPUT_DIR to the version 2 build.' >&2; exit 1; }
 codesign --verify --strict "$APP"
 mkdir -p build
 STAGE="$(mktemp -d /tmp/hinge-dmg.XXXXXX)"
@@ -14,7 +14,7 @@ COPYFILE_DISABLE=1 ditto --norsrc "$APP" "$STAGE/Hinge.app"
 ln -s /Applications "$STAGE/Applications"
 cp LICENSE ATTRIBUTION.md "$STAGE/"
 cat > "$STAGE/READ ME FIRST.txt" <<'TEXT'
-Hinge 2.0.0 — DEVELOPMENT PREVIEW
+Hinge 2.0.1 — DEVELOPMENT PREVIEW
 
 Drag Hinge.app into Applications. Quit an older copy before replacing it.
 
@@ -33,6 +33,6 @@ The Motion page includes three presets, one saved personal setup, and calibratio
 Hinge is based on MacDuo. See LICENSE and ATTRIBUTION.md for credits.
 TEXT
 codesign --verify --strict "$STAGE/Hinge.app"
-hdiutil create -volname 'Hinge Preview' -srcfolder "$STAGE" -format UDZO -ov build/Hinge-2.0.0-preview.dmg
-hdiutil verify build/Hinge-2.0.0-preview.dmg
-shasum -a 256 build/Hinge-2.0.0-preview.dmg > build/Hinge-2.0.0-preview.dmg.sha256
+hdiutil create -volname 'Hinge Preview' -srcfolder "$STAGE" -format UDZO -ov build/Hinge-2.0.1-preview.dmg
+hdiutil verify build/Hinge-2.0.1-preview.dmg
+shasum -a 256 build/Hinge-2.0.1-preview.dmg > build/Hinge-2.0.1-preview.dmg.sha256

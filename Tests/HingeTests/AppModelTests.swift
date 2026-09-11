@@ -75,6 +75,26 @@ import FoldCore
         XCTAssertFalse(model.enabled)
     }
 
+    func testReturningToEffectsReusesCompiledRendererAndArtwork() throws {
+        let model = makeModel()
+        let start = ProcessInfo.processInfo.systemUptime
+        let first = try model.preparePreviewRenderer()
+        let coldMS = (ProcessInfo.processInfo.systemUptime-start)*1000
+        let artwork = first.fallback
+        model.effect = .iris
+        model.blur = 0.25
+        let warmStart = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<100 {
+            let reused = try model.preparePreviewRenderer()
+            XCTAssertTrue(reused === first)
+            XCTAssertTrue(reused.fallback === artwork)
+        }
+        let warmMS = (ProcessInfo.processInfo.systemUptime-warmStart)*1000/100
+        XCTAssertEqual(first.parameters().effect,FoldEffect.iris.shaderIndex)
+        XCTAssertEqual(first.parameters().blur,0.25)
+        print("Preview renderer: cold \(coldMS) ms; cached mean \(warmMS) ms")
+    }
+
     func testLivePreviewFollowsLidBeforeScreenAccessIsEnabled() {
         let model = makeModel()
         model.sensorAvailable = true
