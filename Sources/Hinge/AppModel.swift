@@ -6,6 +6,8 @@ import FoldCore
 import ScreenCaptureKit
 import OSLog
 import IOKit.ps
+import ServiceManagement
+import UniformTypeIdentifiers
 
 final class OverlayPanel: NSPanel {
     override var canBecomeKey: Bool { false }
@@ -33,6 +35,28 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 }
 
 @MainActor final class AppModel: ObservableObject {
+    @Published var performanceMode = PerformanceMode.balanced {
+        didSet {
+            preferences.set(performanceMode.rawValue,forKey:"performanceMode")
+            powerCheckedAt = -.infinity
+            hideOverlay(); capture.stop(); update()
+        }
+    }
+    @Published private(set) var onBattery = false
+    @Published private(set) var savedPresets: [SavedMotionPreset] = []
+    @Published private(set) var excludedApplications: [ExcludedApplication] = []
+    @Published var pauseOnExternalDisplay = false {
+        didSet { preferences.set(pauseOnExternalDisplay,forKey:"pauseOnExternalDisplay"); refreshEnvironment() }
+    }
+    @Published private(set) var automaticPauseReason: String?
+    @Published var setupCompleted = false {
+        didSet { preferences.set(setupCompleted,forKey:"setupCompleted") }
+    }
+    @Published private(set) var launchAtLogin = false
+    @Published private(set) var loginNeedsApproval = false
+    private var frontmostBundleID: String?
+    private var externalDisplayConnected = false
+
     @Published var lidAngle: Double?
     @Published var enabled = false
     @Published var checkingPermission = false
@@ -114,6 +138,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     private var liveAnimation = FoldAnimation()
     private var powerCheckedAt: TimeInterval = -.infinity
     private var demoStart: TimeInterval?
+    private var enabledBeforeDesktopTest = false
     private var previewStart: TimeInterval?
     private var idleSince: TimeInterval?
     private var screenID: CGDirectDisplayID?
@@ -134,15 +159,36 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         _followLid = Published(initialValue:preferences.object(forKey:"followLid") as? Bool ?? true)
         _appearance = Published(initialValue:AppAppearance(rawValue:preferences.string(forKey:"appearance") ?? "system") ?? .system)
         _effect = Published(initialValue:FoldEffect.resolve(persisted:preferences.string(forKey:"effect")))
-        _clearAngle = Published(initialValue:preferences.object(forKey:"clearAngle") as? Double ?? 105)
-        _perspective = Published(initialValue:preferences.object(forKey:"perspective") as? Double ?? 0.7)
-        _blur = Published(initialValue:preferences.object(forKey:"blur") as? Double ?? 0.65)
-        _shadow = Published(initialValue:preferences.object(forKey:"shadow") as? Double ?? 0.65)
+        let saved = MotionPreset(effect:effect,
+            perspective:preferences.object(forKey:"perspective") as? Double ?? 0.7,
+            softness:preferences.object(forKey:"blur") as? Double ?? 0.65,
+            shadow:preferences.object(forKey:"shadow") as? Double ?? 0.65,
+            clearAngle:preferences.object(forKey:"clearAngle") as? Double ?? 105,
+            stillnessDelay:preferences.object(forKey:"stillnessDelay") as? Double ?? 2)
+        _clearAngle = Published(initialValue:saved.clearAngle)
+        _perspective = Published(initialValue:saved.perspective)
+        _blur = Published(initialValue:saved.softness)
+        _shadow = Published(initialValue:saved.shadow)
         _clearWhenStill = Published(initialValue:preferences.object(forKey:"clearWhenStill") as? Bool ?? true)
-        _stillnessDelay = Published(initialValue:preferences.object(forKey:"stillnessDelay") as? Double ?? 2)
+        _stillnessDelay = Published(initialValue:saved.stillnessDelay)
         personalPreset = preferences.data(forKey:"personalPreset")
             .flatMap { try? JSONDecoder().decode(MotionPreset.self,from:$0) }?.validated
+        _performanceMode = Published(initialValue:PerformanceMode(rawValue:preferences.string(forKey:"performanceMode") ?? "") ?? .balanced)
+        _pauseOnExternalDisplay = Published(initialValue:preferences.bool(forKey:"pauseOnExternalDisplay"))
+        _setupCompleted = Published(initialValue:preferences.bool(forKey:"setupCompleted"))
+        if let data = preferences.data(forKey:"savedPresets"),
+           let stored = try? JSONDecoder().decode([SavedMotionPreset].self,from:data) {
+            savedPresets = stored.map { SavedMotionPreset(id:$0.id,name:$0.name,settings:$0.settings) }
+        } else if let favorite = personalPreset {
+            savedPresets = [SavedMotionPreset(name:"My favorite",settings:favorite)]
+            persistPresets()
+        }
+        if let data = preferences.data(forKey:"excludedApplications") {
+            excludedApplications = (try? JSONDecoder().decode([ExcludedApplication].self,from:data)) ?? []
+        }
         guard startServices else { return }
+        refreshLoginStatus()
+        refreshEnvironment()
         NSApp.appearance = appearance.native
         sensor.onReading = { [weak self] angle in
             guard let self else { return }
@@ -196,6 +242,25 @@ enum AppAppearance: String, CaseIterable, Identifiable {
                                     at:ProcessInfo.processInfo.systemUptime)
     }
 
+    /// SwiftUI destroys the preview view when leaving Effects. Keep its expensive
+    /// GPU pipelines and artwork for the lifetime of the model, not the page.
+    func preparePreviewRenderer() throws -> FoldRenderer {
+        if let previewRenderer { return previewRenderer }
+        guard let device else { throw AppError.message("Metal is unavailable on this Mac.") }
+        let renderer = try FoldRenderer(device:device)
+        renderer.fallback = try renderer.makePreviewTexture()
+        renderer.parameters = { [weak self] in self?.uniforms(preview:true) ?? FoldUniforms() }
+        renderer.animatedProgress = { [weak self] in self?.animatedProgress(preview:true) }
+        renderer.pausesWhenSettled = true
+        renderer.keepsAnimating = { [weak self] in
+            guard let self else { return false }
+            return self.previewPlaying || (self.followLid && self.demoRunning)
+        }
+        renderer.onFailure = { [weak self] message in self?.status = message }
+        previewRenderer = renderer
+        return renderer
+    }
+
     func wakePreview() {
         if !overlayVisible { liveAnimation.prime(at:ProcessInfo.processInfo.systemUptime) }
         if let previewView { previewRenderer?.wake(previewView) }
@@ -209,11 +274,16 @@ enum AppAppearance: String, CaseIterable, Identifiable {
             if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() {
                 externalPower = IOPSGetProvidingPowerSourceType(snapshot)?.takeUnretainedValue() as String? == kIOPSACPowerValue
             } else { externalPower = false }
-            let rate = FoldFramePacing.rate(maximum:builtInScreen()?.maximumFramesPerSecond ?? 60,
-                externalPower:externalPower,lowPower:info.isLowPowerModeEnabled,
-                thermalPressure:info.thermalState == .serious || info.thermalState == .critical,moving:true)
+            if onBattery != !externalPower {
+                onBattery = !externalPower
+                hideOverlay(); capture.stop()
+            }
+            let rate = performanceMode.frameRate(maximum:builtInScreen()?.maximumFramesPerSecond ?? 60,
+                onBattery:!externalPower,lowPower:info.isLowPowerModeEnabled,
+                thermalPressure:info.thermalState == .serious || info.thermalState == .critical)
             if fps != rate {
                 fps = rate
+                hideOverlay(); capture.stop()
                 logger.notice("Motion refresh cap: \(rate) Hz; capture stays at most 60 Hz.")
             }
         }
@@ -233,7 +303,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     private var demoDuration: Double { syntheticCheckPath == nil ? 8 : 20 }
 
     var liveProgress: Double {
-        guard enabled,sessionActive,systemAwake,displayAwake,!waitingForSensor else { return 0 }
+        guard enabled,sessionActive,systemAwake,displayAwake,!waitingForSensor,automaticPauseReason == nil else { return 0 }
         if let start = demoStart {
             let t = min(1,(ProcessInfo.processInfo.systemUptime-start)/demoDuration)
             return FoldMath.progress(angle:demoAngle(t),clearAngle:clearAngle)
@@ -251,6 +321,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     private func updateStillnessStatus() {
         guard enabled, !demoRunning else { return }
+        if let automaticPauseReason { status = automaticPauseReason; return }
         status = shouldClearForStillness
             ? "Lid is still. Move it to animate again."
             : "Following your lid. Close it gently to see the effect."
@@ -260,6 +331,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         guard !checkingPermission else { return }
         guard device != nil else { status = "This Mac does not have a supported Metal GPU.";return }
         guard sensorAvailable else { status = "No working lid angle sensor was found. The preview still works.";return }
+        if startDesktopTest { enabledBeforeDesktopTest = enabled }
         let attempt = UUID()
         enableAttempt = attempt
         checkingPermission = true
@@ -350,11 +422,45 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         resetStillness(); wakePreview(); update()
     }
 
-    func playPreview() { previewStart = ProcessInfo.processInfo.systemUptime;previewPlaying = true }
+    func playPreview() {
+        previewStart = ProcessInfo.processInfo.systemUptime; previewPlaying = true; wakePreview()
+    }
+
+    func stopPreview() {
+        previewStart = nil; previewPlaying = false; wakePreview()
+    }
+
+    var activityTitle: String {
+        if checkingPermission { return "Checking screen access" }
+        if demoRunning { return "Testing your desktop" }
+        if enabled, automaticPauseReason != nil { return "Automatically paused" }
+        if enabled { return lidIsStill && clearWhenStill ? "Enabled · lid is still" : "Following your lid" }
+        return "Desktop effects are off"
+    }
+
+    func resetMotion() {
+        applyPreset(MotionPreset(effect:effect,perspective:0.7,softness:0.65,shadow:0.65,
+                                 clearAngle:105,stillnessDelay:2))
+    }
 
     func testDesktop() {
+        if let automaticPauseReason { status = automaticPauseReason; return }
+        guard !demoRunning, !checkingPermission else { return }
+        enabledBeforeDesktopTest = enabled
         if !enabled { enable(startDesktopTest:true);return }
         beginDesktopTest()
+    }
+
+    /// A temporary test must not silently opt the user into persistent capture.
+    func finishDesktopTest() {
+        guard demoRunning else { return }
+        demoStart = nil; demoRunning = false
+        if enabledBeforeDesktopTest {
+            status = "Desktop test finished. Following your lid."
+            updateStillnessStatus()
+        } else {
+            pause("Desktop test finished. Your desktop is clear.")
+        }
     }
 
     private func beginDesktopTest() {
@@ -432,12 +538,10 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
         if let start = demoStart, now-start > demoDuration {
             if syntheticCheckPath != nil { pause("Synthetic overlay test completed.");return }
-            demoStart = nil;demoRunning = false
-            status = "Desktop test finished. Following your lid."
-            updateStillnessStatus()
+            finishDesktopTest()
             logger.notice("Desktop test completed; overlay is clearing.")
         }
-        guard enabled, sessionActive, systemAwake, displayAwake else { return }
+        guard enabled, sessionActive, systemAwake, displayAwake, automaticPauseReason == nil else { return }
         if now-sensorAt > 1 {
                 // Delivery gaps need not mean the HID device has disconnected.
                 // Fail open immediately and resume when fresh readings arrive.
@@ -464,10 +568,11 @@ enum AppAppearance: String, CaseIterable, Identifiable {
             idleSince = nil
             do { try prepareOverlay(on:screen) } catch { pause(error.localizedDescription);return }
             if !capture.isRunning && syntheticCheckPath == nil {
-                let width = Int(screen.frame.width*screen.backingScaleFactor)
-                let height = Int(screen.frame.height*screen.backingScaleFactor)
+                let size = performanceMode.captureSize(width:Int(screen.frame.width*screen.backingScaleFactor),
+                    height:Int(screen.frame.height*screen.backingScaleFactor),onBattery:onBattery)
+                let width = size.width, height = size.height
                 Task {
-                    guard enabled,sessionActive,systemAwake,displayAwake,!shouldClearForStillness,
+                    guard enabled,sessionActive,systemAwake,displayAwake,!shouldClearForStillness,automaticPauseReason == nil,
                           ProcessInfo.processInfo.systemUptime-sensorAt <= 1 else { return }
                     do { try await capture.start(displayID:display.uint32Value,width:width,height:height,fps:min(60,fps)) }
                     catch { if enabled { pause("Cannot capture the desktop: \(error.localizedDescription)") } }
@@ -545,6 +650,9 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
     private func observeWorkspace() {
         let nc = NSWorkspace.shared.notificationCenter
+        notifications.append(nc.addObserver(forName:NSWorkspace.didActivateApplicationNotification,object:nil,queue:.main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshEnvironment() }
+        })
         notifications.append(nc.addObserver(forName:NSWorkspace.activeSpaceDidChangeNotification,object:nil,queue:.main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -589,11 +697,128 @@ enum AppAppearance: String, CaseIterable, Identifiable {
             })
         }
         notifications.append(NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.hideOverlay();self?.capture.stop();self?.panel?.close();self?.panel = nil;self?.screenID = nil }
+            MainActor.assumeIsolated { self?.hideOverlay();self?.capture.stop();self?.panel?.close();self?.panel = nil;self?.screenID = nil; self?.refreshEnvironment() }
         })
         notifications.append(nc.addObserver(forName:NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,object:nil,queue:.main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reducedMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
         })
+    }
+
+    func persistPresets() {
+        if let data = try? JSONEncoder().encode(savedPresets) { preferences.set(data,forKey:"savedPresets") }
+    }
+
+    func savePreset(name:String) {
+        let snapshot = MotionPreset(effect:effect,perspective:perspective,softness:blur,shadow:shadow,
+                                    clearAngle:clearAngle,stillnessDelay:stillnessDelay,clearWhenStill:clearWhenStill)
+        savedPresets.append(SavedMotionPreset(name:name,settings:snapshot))
+        persistPresets()
+    }
+
+    func renamePreset(id:UUID,name:String) {
+        guard let index = savedPresets.firstIndex(where:{ $0.id == id }) else { return }
+        savedPresets[index].name = SavedMotionPreset.cleanName(name); persistPresets()
+    }
+
+    func deletePreset(id:UUID) { savedPresets.removeAll { $0.id == id }; persistPresets() }
+
+    func addExcludedApplication(_ app:ExcludedApplication) {
+        guard !app.bundleID.isEmpty, !excludedApplications.contains(where:{ $0.id == app.id }) else { return }
+        excludedApplications.append(app); persistExclusions(); refreshEnvironment()
+    }
+
+    func removeExcludedApplication(id:String) {
+        excludedApplications.removeAll { $0.id == id }; persistExclusions(); refreshEnvironment()
+    }
+
+    private func persistExclusions() {
+        if let data = try? JSONEncoder().encode(excludedApplications) { preferences.set(data,forKey:"excludedApplications") }
+    }
+
+    func chooseExcludedApplications() {
+        let picker = NSOpenPanel()
+        picker.allowedContentTypes = [.application]; picker.allowsMultipleSelection = true
+        picker.canChooseDirectories = false; picker.directoryURL = URL(fileURLWithPath:"/Applications")
+        picker.message = "Hinge pauses while a selected app is in the foreground."
+        picker.begin { [weak self] response in
+            guard response == .OK, let self else { return }
+            for url in picker.urls {
+                guard let bundle = Bundle(url:url), let identifier = bundle.bundleIdentifier,
+                      identifier != Bundle.main.bundleIdentifier else { continue }
+                self.addExcludedApplication(ExcludedApplication(bundleID:identifier,name:url.deletingPathExtension().lastPathComponent))
+            }
+        }
+    }
+
+    func refreshEnvironment() {
+        frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        externalDisplayConnected = NSScreen.screens.contains { screen in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return false }
+            return CGDisplayIsBuiltin(id.uint32Value) == 0
+        }
+        evaluateSmartPause(frontmostBundleID:frontmostBundleID,hasExternalDisplay:externalDisplayConnected)
+    }
+
+    /// Suspending capture preserves the user's enabled preference; manual Pause
+    /// still wins when an exclusion ends. Neither rule ever enables Hinge.
+    func evaluateSmartPause(frontmostBundleID:String?,hasExternalDisplay:Bool) {
+        let reason: String?
+        if pauseOnExternalDisplay && hasExternalDisplay { reason = "External display connected. Disconnect it to resume, or change Smart Pause." }
+        else if let app = excludedApplications.first(where:{ $0.bundleID == frontmostBundleID }) {
+            reason = "Paused while \(app.name) is in the foreground. Switch apps to resume."
+        } else { reason = nil }
+        guard reason != automaticPauseReason else { return }
+        automaticPauseReason = reason
+        hideOverlay(); capture.stop()
+        if enabled { updateStillnessStatus(); update() }
+    }
+
+    func refreshLoginStatus() {
+        launchAtLogin = SMAppService.mainApp.status == .enabled
+        loginNeedsApproval = SMAppService.mainApp.status == .requiresApproval
+    }
+
+    func setLaunchAtLogin(_ wanted:Bool) {
+        do {
+            if wanted { try SMAppService.mainApp.register() }
+            else { try SMAppService.mainApp.unregister() }
+            refreshLoginStatus()
+            status = loginNeedsApproval ? "Allow Hinge in System Settings → General → Login Items." : "Launch at login updated. Desktop effects still start off."
+        } catch { refreshLoginStatus(); status = "Could not update launch at login: \(error.localizedDescription)" }
+    }
+
+    func openLoginSettings() { SMAppService.openSystemSettingsLoginItems() }
+
+    var diagnosticText: String {
+        // Exclude app names/IDs, paths, screen pixels, and other personal activity.
+        let version = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "3.0.0"
+        return """
+        Hinge \(version) local diagnostics
+        macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
+        Metal available: \(device != nil)
+        Sensor available: \(sensorAvailable)
+        Screen access last known: \(hasPermission)
+        Enabled: \(enabled)
+        Automatically paused: \(automaticPauseReason != nil)
+        Overlay visible: \(overlayVisible)
+        Capture running: \(capture.isRunning)
+        Performance mode: \(performanceMode.title)
+        Frame-rate cap: \(fps)
+        Battery power: \(onBattery)
+        Reduce Motion: \(reducedMotion)
+        Saved presets: \(savedPresets.count)
+        Exclusion rules: \(excludedApplications.count)
+        """
+    }
+
+    func exportDiagnostics() {
+        let picker = NSSavePanel(); picker.allowedContentTypes = [.plainText]
+        picker.nameFieldStringValue = "Hinge-diagnostics.txt"
+        picker.begin { [weak self] response in
+            guard response == .OK, let self, let url = picker.url else { return }
+            do { try self.diagnosticText.write(to:url,atomically:true,encoding:.utf8); self.status = "Diagnostics saved locally." }
+            catch { self.status = "Could not save diagnostics: \(error.localizedDescription)" }
+        }
     }
 
     func shutdown() {

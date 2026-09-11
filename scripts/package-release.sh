@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 export HINGE_OUTPUT_DIR="${HINGE_OUTPUT_DIR:-$HOME/Library/Caches/Hinge/build}"
 APP="$HINGE_OUTPUT_DIR/Hinge.app"
 mkdir -p build/distribution
-ARCHIVE="$PWD/build/distribution/Hinge-0.1.0.zip"
+ARCHIVE="$PWD/build/distribution/Hinge-3.0.0.zip"
 # Remove a previous archive so a failed submission cannot leave an old customer ZIP.
 rm -f "$ARCHIVE"
 ./build.sh

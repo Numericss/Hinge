@@ -79,6 +79,10 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     }
 
     func configure(_ view: MTKView) {
+        // A newly attached view has no pixels, even when its uniforms match the
+        // previous view. Force its first draw while retaining compiled pipelines.
+        renderedUniforms = nil
+        lastTime = ProcessInfo.processInfo.systemUptime
         view.device = device
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColorMake(0, 0, 0, 1)

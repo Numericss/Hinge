@@ -10,6 +10,91 @@ import FoldCore
         return AppModel(preferences:preferences,startServices:false,verifyCaptureAccess:verify)
     }
 
+    func testMalformedSavedVisualSettingsAreClampedOnLaunch() {
+        let suite = "com.datalynlabs.hinge.tests.\(UUID().uuidString)"
+        let preferences = UserDefaults(suiteName:suite)!
+        defer { preferences.removePersistentDomain(forName:suite) }
+        preferences.set(999.0,forKey:"clearAngle")
+        preferences.set(-5.0,forKey:"blur")
+        preferences.set(12.0,forKey:"perspective")
+        preferences.set(0.0,forKey:"stillnessDelay")
+        let model = AppModel(preferences:preferences,startServices:false)
+        XCTAssertEqual(model.clearAngle,140)
+        XCTAssertEqual(model.blur,0)
+        XCTAssertEqual(model.perspective,1)
+        XCTAssertEqual(model.stillnessDelay,1)
+    }
+
+    func testDesktopTestReturnsToDisabledState() async {
+        let model = makeModel(verify:{ })
+        model.sensorAvailable = true
+        model.testDesktop()
+        for _ in 0..<1000 {
+            if model.demoRunning { break }
+            await Task.yield()
+        }
+        XCTAssertTrue(model.demoRunning)
+        XCTAssertTrue(model.enabled)
+        model.finishDesktopTest()
+        XCTAssertFalse(model.demoRunning)
+        XCTAssertFalse(model.enabled)
+        XCTAssertFalse(model.capture.isRunning)
+    }
+
+    func testDesktopTestPreservesPreviouslyEnabledState() {
+        let model = makeModel()
+        model.enabled = true
+        model.testDesktop()
+        XCTAssertTrue(model.demoRunning)
+        model.finishDesktopTest()
+        XCTAssertTrue(model.enabled)
+        XCTAssertFalse(model.demoRunning)
+        model.pause()
+    }
+
+    func testPreviewStopDoesNotChangeDesktopEnablement() {
+        let model = makeModel()
+        model.enabled = true
+        model.playPreview()
+        XCTAssertTrue(model.previewPlaying)
+        model.stopPreview()
+        XCTAssertFalse(model.previewPlaying)
+        XCTAssertTrue(model.enabled)
+        model.pause()
+    }
+
+    func testResetPreservesEffectAndFavorite() {
+        let model = makeModel()
+        model.applyPreset(.cinematic)
+        model.savePersonalPreset()
+        model.resetMotion()
+        XCTAssertEqual(model.effect,.roll)
+        XCTAssertEqual(model.personalPreset,.cinematic)
+        XCTAssertEqual(model.clearAngle,105)
+        XCTAssertEqual(model.blur,0.65)
+        XCTAssertFalse(model.enabled)
+    }
+
+    func testReturningToEffectsReusesCompiledRendererAndArtwork() throws {
+        let model = makeModel()
+        let start = ProcessInfo.processInfo.systemUptime
+        let first = try model.preparePreviewRenderer()
+        let coldMS = (ProcessInfo.processInfo.systemUptime-start)*1000
+        let artwork = first.fallback
+        model.effect = .iris
+        model.blur = 0.25
+        let warmStart = ProcessInfo.processInfo.systemUptime
+        for _ in 0..<100 {
+            let reused = try model.preparePreviewRenderer()
+            XCTAssertTrue(reused === first)
+            XCTAssertTrue(reused.fallback === artwork)
+        }
+        let warmMS = (ProcessInfo.processInfo.systemUptime-warmStart)*1000/100
+        XCTAssertEqual(first.parameters().effect,FoldEffect.iris.shaderIndex)
+        XCTAssertEqual(first.parameters().blur,0.25)
+        print("Preview renderer: cold \(coldMS) ms; cached mean \(warmMS) ms")
+    }
+
     func testLivePreviewFollowsLidBeforeScreenAccessIsEnabled() {
         let model = makeModel()
         model.sensorAvailable = true
