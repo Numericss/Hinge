@@ -95,7 +95,7 @@ struct Controls: View {
                 Label(model.sensorAvailable ? "Lid sensor connected" : "Sensor unavailable",
                       systemImage:model.sensorAvailable ? "checkmark.circle" : "exclamationmark.circle")
                     .font(.caption).foregroundStyle(model.sensorAvailable ? .secondary : Color.orange)
-                Text("Version 3.0 Preview").font(.caption).foregroundStyle(.secondary)
+                Text("Version \(AppBrand.shortVersion)").font(.caption).foregroundStyle(.secondary)
             }.padding(16)
         }.background(.regularMaterial)
     }
@@ -395,16 +395,20 @@ struct Controls: View {
         }
         GroupBox("About Hinge") {
             VStack(alignment:.leading,spacing:10) {
-                Text("Hinge 3.0 · Preview").font(.headline)
+                Text("Hinge \(AppBrand.shortVersion)").font(.headline)
                 Text("A little motion. A more personal Mac.").foregroundStyle(.secondary)
                 Text("macOS 14+ · Apple silicon · compatible lid sensor\nHinge stays available in your menu bar when this window closes.")
                     .font(.callout).foregroundStyle(.secondary)
+                Text("Independently maintained fork of MacDuo · MIT licensed. License and attribution ship inside this app.")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack {
-                    Text("Built on MacDuo · MIT licensed").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
                     Button("License & credits") {
                         if let url = Bundle.main.url(forResource:"ATTRIBUTION",withExtension:"md") { NSWorkspace.shared.open(url) }
                     }
+                    if let mail = AppBrand.supportMailURL {
+                        Button("Contact support") { NSWorkspace.shared.open(mail) }
+                    }
+                    Spacer()
                 }
             }.padding(12)
         }

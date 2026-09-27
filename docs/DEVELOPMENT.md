@@ -8,6 +8,6 @@ The application uses `com.datalynlabs.hinge.mac` as its working bundle identity.
 
 Saving a preset writes to UserDefaults. Loading one clamps rendering values and never enables capture. Calibration accepts only a current sensor reading in the supported 60–140 degree interval. All enablement remains an explicit user action.
 
-`./build.sh` creates `~/Library/Caches/Hinge/build/Hinge.app` and includes both LICENSE and ATTRIBUTION.md. `scripts/package-release.sh` requires a Developer ID Application identity and notarytool profile; it produces a customer ZIP only after notarization, stapling, and Gatekeeper assessment.
+`./build.sh` creates `~/Library/Caches/Hinge/build/Hinge.app` and includes both LICENSE and ATTRIBUTION.md. Optional `HINGE_SUPPORT_EMAIL` is written to Info.plist (`HingeSupportEmail`) for the in-app Contact support mailto; leave unset to omit the button. `scripts/package-release.sh` requires a Developer ID Application identity and notarytool profile (fails fast if missing); it produces a customer ZIP only after notarization, stapling, and Gatekeeper assessment. See `release/V3.0-CUSTOMER.md` and `release/CHECKLIST.md` for the Gumroad path.
 
 The upstream source history is retained, and the source remote is named `upstream`. The Hinge repository is https://github.com/Numericss/Hinge (`origin`); MacDuo remains the `upstream` remote. See ATTRIBUTION.md for inherited research notes and license provenance.
