@@ -1,5 +1,6 @@
 #!/bin/bash
 # Local evaluation disk image. Never represents a notarized customer release.
+# For Gumroad: use scripts/package-release.sh instead (Developer ID + notary).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 APP="${HINGE_OUTPUT_DIR:-$HOME/Library/Caches/Hinge/build}/Hinge.app"
@@ -14,13 +15,13 @@ COPYFILE_DISABLE=1 ditto --norsrc "$APP" "$STAGE/Hinge.app"
 ln -s /Applications "$STAGE/Applications"
 cp LICENSE ATTRIBUTION.md "$STAGE/"
 cat > "$STAGE/READ ME FIRST.txt" <<'TEXT'
-Hinge 3.0.0 — DEVELOPMENT PREVIEW
+Hinge 3.0.0 — local evaluation build (not the Gumroad download)
 
 Drag Hinge.app into Applications. Quit an older copy before replacing it.
 
-This preview is ad-hoc signed and has NOT been notarized by Apple.
-It is for evaluation, not the final paid Gumroad download. macOS may block
-launch. A customer release will use Developer ID signing and notarization.
+This image is ad-hoc signed and has NOT been notarized by Apple.
+It is for evaluation only. The paid customer archive is a notarized ZIP
+from scripts/package-release.sh (Developer ID + notarytool).
 
 Requirements: Apple-silicon MacBook, macOS 14+, and a compatible lid-angle
 sensor for automatic effects. External displays are not animated.
@@ -38,3 +39,4 @@ codesign --verify --strict "$STAGE/Hinge.app"
 hdiutil create -volname 'Hinge Preview' -srcfolder "$STAGE" -format UDZO -ov build/Hinge-3.0.0-preview.dmg
 hdiutil verify build/Hinge-3.0.0-preview.dmg
 shasum -a 256 build/Hinge-3.0.0-preview.dmg > build/Hinge-3.0.0-preview.dmg.sha256
+printf 'Evaluation DMG only (not for Gumroad): build/Hinge-3.0.0-preview.dmg\n'

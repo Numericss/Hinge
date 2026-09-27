@@ -1,4 +1,6 @@
-# Hinge 3.0.0 development preview
+# Hinge 3.0.0 development preview (historical)
+
+> **Customer release path:** see [V3.0-CUSTOMER.md](V3.0-CUSTOMER.md), [CHECKLIST.md](CHECKLIST.md), and [GUMROAD.md](GUMROAD.md). This file preserves development-preview validation notes; it is not the buyer-facing product description.
 
 This update adds a menu-bar control panel; named preset creation, renaming, and deletion; battery-aware performance modes; optional pausing for chosen foreground applications or connected external displays; guided setup; optional launch at login; and local diagnostics export.
 
@@ -12,4 +14,4 @@ Existing favorites migrate into the named preset library. Automatic pause rules 
 - Interactive native UI verification remains incomplete because the computer-use bridge repeatedly disconnected. Launch-at-login approval, actual lid movement, Screen Recording, and external-display transitions still require live validation.
 - Performance modes enforce limits; battery savings and navigation latency have not been benchmarked on hardware.
 
-The DMG is an ad-hoc-signed evaluation build. Developer ID signing, Apple notarization, and successful live-use validation are required before replacing the paid customer download.
+The preview DMG from `scripts/package-preview-dmg.sh` is an ad-hoc-signed evaluation build. Developer ID signing, Apple notarization (via `scripts/package-release.sh`), and successful live-use validation on seller hardware are required before replacing the paid customer download.

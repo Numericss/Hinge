@@ -2,7 +2,7 @@
 
 Project repository: [Numericss/Hinge](https://github.com/Numericss/Hinge).
 
-A native macOS desktop-effects app that responds to a compatible MacBook lid sensor. Working product name; version 3.0.0 is a development preview, not yet a customer release.
+A native macOS desktop-effects app that responds to a compatible MacBook lid sensor. Working product name. Version **3.0.0** is the Gumroad customer target: buyers receive a **Developer ID–signed, Apple-notarized** ZIP produced on the seller’s Mac (not an ad-hoc local build).
 
 ![Hinge demonstrating Duo, Roll, Shutter, Flex, and Iris](docs/media/hinge-effects.gif)
 
@@ -40,18 +40,30 @@ Tests require a full Xcode installation. If your active toolchain is Command Lin
 
 Signed app bundles are built in `~/Library/Caches/Hinge/build` to avoid file-provider metadata in synced Documents folders. Override with `HINGE_OUTPUT_DIR` if needed.
 
-The default build is ad-hoc signed for local preview. Use `HINGE_SIGNING_IDENTITY` to select a signing identity. Do not upload the preview build as a finished paid download.
+The default `./build.sh` is **ad-hoc signed for local development**. Do not upload that build as the paid Gumroad download. Customer ZIPs must be notarized via the release script below.
+
+Optional at build time: `HINGE_SUPPORT_EMAIL=you@example.com` embeds a Support mailto in About (see [release/CHECKLIST.md](release/CHECKLIST.md)).
 
 Open **Motion** for named presets and calibration. **Automation** controls performance, pause rules, and launch at login. **Effects** provides one-click selection and replay. **Setup & Help** explains permissions and the temporary desktop test. Manual preview changes the preview only; Pause Hinge controls the actual desktop. Enable Hinge only when ready to grant screen access. Esc and Control–Option–Command–F pause the desktop overlay.
 
 ## Release
 
-See [3.0 preview notes](release/V3-PREVIEW.md), [the release checklist](release/CHECKLIST.md), [Gumroad listing draft](release/GUMROAD.md), and [development notes](docs/DEVELOPMENT.md). The customer packaging command is:
+Customer product notes: [release/V3.0-CUSTOMER.md](release/V3.0-CUSTOMER.md).  
+Seller checklist (pre-payment → Mac packaging → Gumroad): [release/CHECKLIST.md](release/CHECKLIST.md).  
+Gumroad listing draft (placeholders for price / support / hardware): [release/GUMROAD.md](release/GUMROAD.md).  
+Historical 3.0 development-preview validation: [release/V3-PREVIEW.md](release/V3-PREVIEW.md).  
+Development notes: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+Customer packaging (Developer ID + notarytool — run on a Mac with certificates configured):
 
 ```sh
-HINGE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
-HINGE_NOTARY_PROFILE='your-keychain-profile' ./scripts/package-release.sh
+export HINGE_SIGNING_IDENTITY='Developer ID Application: Your Name (TEAMID)'
+export HINGE_NOTARY_PROFILE='your-keychain-profile'
+export HINGE_SUPPORT_EMAIL='[SUPPORT_EMAIL]'   # optional; recommended for buyers
+./scripts/package-release.sh
 ```
+
+Output: `build/distribution/Hinge-3.0.0.zip` and `.sha256`. The script refuses to run without a Developer ID identity and notary profile, and only writes the customer ZIP after notarization, stapling, and Gatekeeper assessment succeed.
 
 ## Credits and license
 
